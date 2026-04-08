@@ -52,30 +52,38 @@ export const connectToSocket = (server) => {
 
         socket.on("chat-message", (data, sender) => {
 
-            const [matchingRoom, found] = Object.entries(connections)
-                .reduce(([room, isFound], [roomKey, roomValue]) => {
+            // sabse phle find the (meeting Id) jismei sender hai ; 
+            let matchingRoom = '' ; 
+            let found = false ; 
 
-
-                    if (!isFound && roomValue.includes(socket.id)) {
-                        return [roomKey, true];
-                    }
-
-                    return [room, isFound];
-
-                }, ['', false]);
-
-            if (found === true) {
-                if (messages[matchingRoom] === undefined) {
-                    messages[matchingRoom] = []
+            for(let roomkey in connections){
+                let roomValue = connections[roomKey] ; 
+                if(!found&&roomValue.includes(socket.id)){
+                    matchingRoom = roomKey ; 
+                    found = true ; 
+                    break; 
                 }
-
-                messages[matchingRoom].push({ 'sender': sender, "data": data, "socket-id-sender": socket.id })
-                console.log("message", matchingRoom, ":", sender, data)
-
-                connections[matchingRoom].forEach((elem) => {
-                    io.to(elem).emit("chat-message", data, sender, socket.id)
-                })
             }
+
+            if(found === true){
+                if(messages[matchingRoom] === undefined){
+                    messages[matchingRoom] = [] ; 
+                }
+                // uss room ke message mei data dall do 
+                messages[matchingRoom].push({
+                    'sender' : sender, 
+                    "data" : data,
+                    "socket-id-sender" : socket.id
+                }) ; 
+
+                // sabko notification bhej do 
+                connections[matchingRoom].forEach((elem)=>{
+                    io.to(elem).emit("chat-message", data, sender, socket.id) ; 
+                }) ; 
+                
+            }
+
+           
 
         })
 
