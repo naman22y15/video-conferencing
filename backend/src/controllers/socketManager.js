@@ -1,9 +1,46 @@
 import { Server } from "socket.io"
 
 
-let connections = {}
-let messages = {}
-let timeOnline = {}
+let connections = {};
+// connections:
+// Stores which users (socket IDs) are in which room
+// Structure:
+// {
+//    roomId1: [socketId1, socketId2, socketId3],
+//    roomId2: [socketId4, socketId5]
+// }
+// -> Key = room name / room ID
+// -> Value = array of socket IDs connected in that room
+
+
+let messages = {};
+// messages:
+// Stores chat history for each room
+// Structure:
+// {
+//    roomId1: [
+//        { sender: "Alice", data: "Hello", "socket-id-sender": "abc123" },
+//        { sender: "Bob", data: "Hi", "socket-id-sender": "xyz456" }
+//    ],
+//    roomId2: [
+//        ...
+//    ]
+// }
+// -> Key = room name
+// -> Value = array of message objects for that room
+
+
+let timeOnline = {};
+// timeOnline:
+// Stores the time when each user (socket) connected
+// Structure:
+// {
+//    socketId1: Date_object,
+//    socketId2: Date_object
+// }
+// -> Key = socket ID
+// -> Value = timestamp (Date) when user came online
+// Used to calculate how long a user stayed connected
 
 export const connectToSocket = (server) => {
     const io = new Server(server, {
@@ -87,40 +124,44 @@ export const connectToSocket = (server) => {
 
         })
 
-        socket.on("disconnect", () => {
+socket.on("disconnect", () => {
 
-            var diffTime = Math.abs(timeOnline[socket.id] - new Date())
+    var diffTime = Math.abs(timeOnline[socket.id] - new Date());
 
-            var key
+    var key = null;
 
-            for (const [k, v] of JSON.parse(JSON.stringify(Object.entries(connections)))) {
+    // Loop through rooms
+    for (let roomKey in connections) {
+        let users = connections[roomKey];
 
-                for (let a = 0; a < v.length; ++a) {
-                    if (v[a] === socket.id) {
-                        key = k
+        // Loop through users in that room
+        for (let i = 0; i < users.length; i++) {
 
-                        for (let a = 0; a < connections[key].length; ++a) {
-                            io.to(connections[key][a]).emit('user-left', socket.id)
-                        }
+            if (users[i] === socket.id) {
+                key = roomKey;
 
-                        var index = connections[key].indexOf(socket.id)
-
-                        connections[key].splice(index, 1)
-
-
-                        if (connections[key].length === 0) {
-                            delete connections[key]
-                        }
-                    }
+                // Notify all users in the room
+                for (let j = 0; j < connections[key].length; j++) {
+                    io.to(connections[key][j]).emit('user-left', socket.id);
                 }
 
+                // Remove user from room
+                let index = connections[key].indexOf(socket.id);
+                connections[key].splice(index, 1);
+
+                // Delete room if empty
+                if (connections[key].length === 0) {
+                    delete connections[key];
+                }
+
+                break; // exit inner loop
             }
+        }
 
+        if (key !== null) break; // exit outer loop once found
+    }
 
-        })
-
-
-    })
+});
 
 
     return io;
