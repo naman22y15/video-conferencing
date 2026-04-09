@@ -273,99 +273,153 @@ export default function VideoMeetComponent() {
 
 
 
-    let connectToSocketServer = () => {
-        socketRef.current = io.connect(server_url, { secure: false })
+let connectToSocketServer = () => {
 
-        socketRef.current.on('signal', gotMessageFromServer)
+    // Connect to the backend server using socket.io
+    socketRef.current = io.connect(server_url, { secure: false })
 
-        socketRef.current.on('connect', () => {
-            socketRef.current.emit('join-call', window.location.href)
-            socketIdRef.current = socketRef.current.id
+    // Listen for signaling messages (SDP and ICE) from server
+    socketRef.current.on('signal', gotMessageFromServer)
 
-            socketRef.current.on('chat-message', addMessage)
+    // When connection to server is successful
+    socketRef.current.on('connect', () => {
 
-            socketRef.current.on('user-left', (id) => {
-                setVideos((videos) => videos.filter((video) => video.socketId !== id))
-            })
+        // Join a room (using current URL as room ID)
+        socketRef.current.emit('join-call', window.location.href)
 
-            socketRef.current.on('user-joined', (id, clients) => {
-                clients.forEach((socketListId) => {
+        // Store your unique socket ID
+        socketIdRef.current = socketRef.current.id
 
-                    connections[socketListId] = new RTCPeerConnection(peerConfigConnections)
-                    // Wait for their ice candidate       
-                    connections[socketListId].onicecandidate = function (event) {
-                        if (event.candidate != null) {
-                            socketRef.current.emit('signal', socketListId, JSON.stringify({ 'ice': event.candidate }))
-                        }
-                    }
+        // Listen for incoming chat messages
+        socketRef.current.on('chat-message', addMessage)
 
-                    // Wait for their video stream
-                    connections[socketListId].onaddstream = (event) => {
-                        console.log("BEFORE:", videoRef.current);
-                        console.log("FINDING ID: ", socketListId);
+        // When a user leaves the call
+        socketRef.current.on('user-left', (id) => {
 
-                        let videoExists = videoRef.current.find(video => video.socketId === socketListId);
+            // Remove that user's video from the UI
+            // this videos is array of pair [{soketId, stream}, {socketId, stream}]
+            setVideos((videos) =>
+                videos.filter((video) => video.socketId !== id)
+            )
+        })
 
-                        if (videoExists) {
-                            console.log("FOUND EXISTING");
+        // When a new user joins the call
+        socketRef.current.on('user-joined', (id, clients) => { // server will emit user-joined and will give list of all user joined in that room id is the id of current socket and clients list of ealier 
 
-                            // Update the stream of the existing video
-                            setVideos(videos => {
-                                const updatedVideos = videos.map(video =>
-                                    video.socketId === socketListId ? { ...video, stream: event.stream } : video
-                                );
-                                videoRef.current = updatedVideos;
-                                return updatedVideos;
-                            });
-                        } else {
-                            // Create a new video
-                            console.log("CREATING NEW");
-                            let newVideo = {
-                                socketId: socketListId,
-                                stream: event.stream,
-                                autoplay: true,
-                                playsinline: true
-                            };
+            // Loop through all users currently in the room
+            clients.forEach((socketListId) => { // jo bhi user hai room mi unke sath connection bhitha do 
 
-                            setVideos(videos => {
-                                const updatedVideos = [...videos, newVideo];
-                                videoRef.current = updatedVideos;
-                                return updatedVideos;
-                            });
-                        }
-                    };
+                // Create a WebRTC peer connection for each user
+                connections[socketListId] = new RTCPeerConnection(peerConfigConnections)
 
-
-                    // Add the local video stream
-                    if (window.localStream !== undefined && window.localStream !== null) {
-                        connections[socketListId].addStream(window.localStream)
-                    } else {
-                        let blackSilence = (...args) => new MediaStream([black(...args), silence()])
-                        window.localStream = blackSilence()
-                        connections[socketListId].addStream(window.localStream)
-                    }
-                })
-
-                if (id === socketIdRef.current) {
-                    for (let id2 in connections) {
-                        if (id2 === socketIdRef.current) continue
-
-                        try {
-                            connections[id2].addStream(window.localStream)
-                        } catch (e) { }
-
-                        connections[id2].createOffer().then((description) => {
-                            connections[id2].setLocalDescription(description)
-                                .then(() => {
-                                    socketRef.current.emit('signal', id2, JSON.stringify({ 'sdp': connections[id2].localDescription }))
-                                })
-                                .catch(e => console.log(e))
-                        })
+                // When ICE candidate is generated, send it to the other user
+                connections[socketListId].onicecandidate = function (event) {
+                    if (event.candidate != null) {
+                        socketRef.current.emit(
+                            'signal',
+                            socketListId,
+                            JSON.stringify({ 'ice': event.candidate })
+                        )
                     }
                 }
+
+                // When remote video stream is received from another user
+                connections[socketListId].onaddstream = (event) => {
+
+                    // Check if this user's video already exists
+                    let videoExists = videoRef.current.find(
+                        video => video.socketId === socketListId
+                    );
+
+                    if (videoExists) {
+
+                        // Update the existing video stream
+                        setVideos(videos => {
+
+                            const updatedVideos = videos.map(video =>
+                                video.socketId === socketListId
+                                    ? { ...video, stream: event.stream } // agr koi or hai to uske mei meri video daal do 
+                                    : video // age mei hi hu to meri mei meri video matt dalo 
+                            );
+
+                            videoRef.current = updatedVideos;
+                            return updatedVideos;
+                        });
+
+                    } else { // if phla banda hai top video array create kro 
+
+                        // Create a new video entry for this user
+                        let newVideo = {
+                            socketId: socketListId,
+                            stream: event.stream,
+                            autoplay: true,
+                            playsinline: true
+                        };
+
+                        // Add the new video to state
+                        setVideos(videos => {
+
+                            const updatedVideos = [...videos, newVideo];
+                            videoRef.current = updatedVideos;
+                            return updatedVideos;
+                        });
+                    }
+                };
+
+                // Add your local video/audio stream to the connection
+                if (window.localStream !== undefined && window.localStream !== null) {
+
+                    connections[socketListId].addStream(window.localStream)
+
+                } else {
+
+                    // If no stream exists, create a fake stream (black video + silence)
+                    let blackSilence = (...args) =>
+                        new MediaStream([black(...args), silence()])
+
+                    window.localStream = blackSilence()
+
+                    connections[socketListId].addStream(window.localStream)
+                }
             })
+
+            // If the current user is the one who just joined
+            if (id === socketIdRef.current) {
+
+                // Create an offer for all other users
+                for (let id2 in connections) {
+
+                    // Skip yourself
+                    if (id2 === socketIdRef.current) continue
+
+                    try {
+                        // Ensure your stream is added
+                        connections[id2].addStream(window.localStream)
+                    } catch (e) { }
+
+                    // Create an offer to start WebRTC connection
+                    connections[id2].createOffer().then((description) => { // ofer create kro 
+
+                        // Set local description (store the offer)
+                        connections[id2].setLocalDescription(description)
+                            .then(() => {
+
+                                // Send the offer (SDP) to the other user
+                                socketRef.current.emit(
+                                    'signal',
+                                    id2,
+                                    JSON.stringify({
+                                        'sdp': connections[id2].localDescription
+                                    })
+                                )
+                            })
+                            .catch(e => console.log(e))
+                    })
+                }
+            }
         })
-    }
+    })
+}
 
     let silence = () => {
         let ctx = new AudioContext()
@@ -441,8 +495,8 @@ export default function VideoMeetComponent() {
 
     
     let connect = () => {
-        setAskForUsername(false);
-        getMedia();
+        setAskForUsername(false); // sabse phle askforusername koh false krdo taaki real video wala page khule 
+        getMedia();   // and get  media fucntion koh call kro 
     }
 
 
