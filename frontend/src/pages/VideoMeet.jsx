@@ -468,7 +468,7 @@ export default function VideoMeetComponent() {
 
                 <div className={styles.meetVideoContainer}>
 
-                    {showModal ? <div className={styles.chatRoom}>
+                    {showModal ? <div className={styles.chatRoom}> // show chat panel if it is on 
 
                         <div className={styles.chatContainer}>
                             <h1>Chat</h1>
@@ -526,17 +526,21 @@ export default function VideoMeetComponent() {
                     <video className={styles.meetUserVideo} ref={localVideoref} autoPlay muted></video>
 
                     <div className={styles.conferenceView}>
-                        {videos.map((video) => (
-                            <div key={video.socketId}>
+                        // here video is array of pair wjhe pair first elemetn is socidid and second elemetn is stream [{socketId, ,stream}, {socketId, stream}]
+                        {videos.map((video) => (  
+
+
+                    
+                            <div key={video.socketId}> // for each person create a box 
                                 <video
 
-                                    data-socket={video.socketId}
-                                    ref={ref => {
-                                        if (ref && video.stream) {
-                                            ref.srcObject = video.stream;
+                                    data-socket={video.socketId}  // to store whom does this video belongs to 
+                                    ref={ref => {  // ref gives access to real video dom 
+                                        if (ref && video.stream) {  // like if video element exist and stream exists 
+                                            ref.srcObject = video.stream;  // if exists play this persons video 
                                         }
                                     }}
-                                    autoPlay
+                                    autoPlay // start playing imediatley without user clicking play 
                                 >
                                 </video>
                             </div>
